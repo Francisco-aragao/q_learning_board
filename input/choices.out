@@ -1,0 +1,19 @@
+maps/choices.map standard 5 0 300000
+@>>v<>>v<<@
+@v@vx@xv@^@
+@^@v@@xv@v@
+@v@vx@xv@v@
+@>>v@@xv<<@
+@v@vx@xv@^@
+@v@v@@xv@v@
+@>>>>O<<<<@
+
+maps/choices.map stochastic 5 0 300000
+@>>v<>>v<<@
+@^@vx@xv@v@
+@^@v@@xv@v@
+@v@vx@xv@v@
+@>>v@@xv<<@
+@^@vx@xv@v@
+@v@v@@xv@v@
+@>>>>O<<<<@
