@@ -1,9 +1,7 @@
-from collections import deque
-import heapq
-from utils import Utils
 import numpy as np
 import random
 
+# terrains costs for q-learning standard algorithm
 TERRAIN_REWARDS_STANDARD = {
     '.': -0.1,
     ';': -0.3,
@@ -13,6 +11,7 @@ TERRAIN_REWARDS_STANDARD = {
     '@': -2e15
 }
 
+# terrains costs for q-learning positive algorithm
 TERRAIN_REWARDS_POSITIVE = {
     '.': 3.0,
     ';': 1.5,
@@ -22,13 +21,15 @@ TERRAIN_REWARDS_POSITIVE = {
     '@': -2e15
 }
 
-# variables to store the number of expanded nodes and the costs -> not important for the solution, just for analysis
-EXPANDED_NODES = 0
-costs = []
+# parameters for q-learning search
+ALPHA = 0.1  # Learning rate
+GAMMA = 0.9  # Discount factor
+EPSILON = 0.1  # Exploration rate
+
 
 class Game:
     """
-    Class to represent the game map
+    Class to represent the game map and perform Q-Learning.
     """
 
     def __init__(self, width, height):
@@ -37,159 +38,140 @@ class Game:
         self.col = height
         self.map = [['' for _ in range(width)] for _ in range(height)]
 
-        # Define possible actions: right, left, down, up
+        # possible actions: right (>), left (<), down (v), up (^)
         self.directions = [(0, 1, '>'), (0, -1, '<'), (1, 0, 'v'), (-1, 0, '^')]
         
-        # Initialize Q-table with zeros
+        # initialize Q-table with zeros
+        # Q-table dimensions: (height, width, number of actions)
+        # -> it is stored the reward for each action (right, left, down, up) in each position of the map
         self.Q = np.zeros((height, width, len(self.directions)))
 
     # main function to call each algorithm
     def q_learning(self, alg, initial_x, initial_y, step_number):
-        
+
         if alg == 'stochastic':
-            self.q_learning_stochastic(initial_x, initial_y, step_number)
+            self.q_learning_stochastic(initial_x, initial_y, step_number, terrain_rewards=TERRAIN_REWARDS_STANDARD, algorithm='stochastic')
         elif alg == 'positive':
-            self.q_learning_positive(initial_x, initial_y, step_number)
+            self.q_learning_positive(initial_x, initial_y, step_number, terrain_rewards=TERRAIN_REWARDS_POSITIVE, algorithm='positive')
         elif alg == 'standard':
-            self.q_learning_standard(initial_x, initial_y, step_number)
+            self.q_learning_standard(initial_x, initial_y, step_number, terrain_rewards=TERRAIN_REWARDS_STANDARD, algorithm='standard')
         else:
-            raise Exception(f'Algorithm {alg} not implemented')
-        
-        return 1
+            raise Exception(f'Algorithm {alg} not implemented')        
 
     
-    def q_learning_stochastic(self, initial_x, initial_y, step_number):
-        """
-        Perform Q-Learning for the given number of steps.
-        
-        :param initial_x: The starting x-coordinate.
-        :param initial_y: The starting y-coordinate.
-        :param step_number: The number of steps to run the algorithm.
-        """
-        alpha = 0.1  # Learning rate
-        gamma = 0.9  # Discount factor
-        epsilon = 0.1  # Exploration rate
-        
-        for _ in range(step_number):
-            x, y = initial_x, initial_y
-            while True:
-                # Choose an action
-                action = self.choose_action((x, y), epsilon)
-                dx, dy, _ = action
-
-                if random.uniform(0, 1) < 0.2:
-                    # Get perpendicular actions based on the original action
-                    if dx == 0:  # Original action is left or right
-                        perpendicular_actions = [(-1, 0), (1, 0)]  # Up or down
-                    else:  # Original action is up or down
-                        perpendicular_actions = [(0, -1), (0, 1)]  # Left or right
-                    
-                    # Randomly choose one of the perpendicular actions
-                    dx, dy = random.choice(perpendicular_actions)
-                
-                
-                # Calculate the new position
-                nx, ny = x + dx, y + dy
-                
-                # Check if the new position is out of bounds or a wall
-                if nx < 0 or nx >= self.col or ny < 0 or ny >= self.row or self.map[nx][ny] == '@':
-                    nx, ny = x, y  # Stay in the same position
-                
-                # Get the reward for the new position
-                reward = TERRAIN_REWARDS_STANDARD.get(self.map[nx][ny], 0)
-                
-                # Check if the new state is terminal (fire or goal)
-                if self.map[nx][ny] in ['x', 'O']:
-                    # Terminal state: update Q-value using the Q-learning formula
-                    self.Q[x, y, self.directions.index(action)] += alpha * (
-                        reward + gamma * 0 - self.Q[x, y, self.directions.index(action)]
-                    )
-                    break
-                else:
-                    # Non-terminal state: update Q-value using the Q-learning formula
-                    self.Q[x, y, self.directions.index(action)] += alpha * (
-                        reward + gamma * np.max(self.Q[nx, ny]) - self.Q[x, y, self.directions.index(action)]
-                    )
-                    x, y = nx, ny  # Move to the new position
 
 
-    def choose_action(self, state, epsilon):
-        """
-        Choose an action using the ϵ-greedy strategy.
+    # chose the action to be performed by the agent -> epsilon greedy uses probability to choose between exploration and exploitation
+    def choose_action_e_greedy(self, state):
         
-        :param state: The current state (x, y).
-        :param epsilon: The exploration rate.
-        :return: The chosen action (dx, dy, symbol).
-        """
-        if random.uniform(0, 1) < epsilon:
+        if random.uniform(0, 1) < EPSILON:
             # Explore: choose a random action
             return random.choice(self.directions)
         else:
-            # Exploit: choose the action with the highest Q-value
+            # Exploit: choose the action with the highest Q-value (best action)
             return self.directions[np.argmax(self.Q[state])]
     
-    def q_learning_standard(self, initial_x, initial_y, step_number, terrain_rewards=TERRAIN_REWARDS_STANDARD):
+    # get the next position to be visited. If the algorithm is stochastic, it will have a 20% chance of moving in a perpendicular direction, else it will move in the direction chosen by the agent by the choose_action_e_greedy function
+    def get_next_position(self, x, y, dx, dy, algorithm):
+
+        if algorithm == 'stochastic':
+            # decide if the agent will move one of the perpendicular directions
+            if random.uniform(0, 1) < 0.2:
+                if dx == 0:  # original action is left or right
+                    perpendicular_actions = [(-1, 0), (1, 0)]  # up or down
+                else:  # original action is up or down
+                    perpendicular_actions = [(0, -1), (0, 1)]  # left or right
+                
+                # two options of movements -> random.choice to choose one of them
+                dx, dy = random.choice(perpendicular_actions)
+            
+            
+            nx, ny = x + dx, y + dy
+
+            return nx, ny
+        
+        # standard or positive algorithms -> just return new position
+        return x + dx, y + dy
+
+    
+    def q_learning_standard(self, initial_x, initial_y, step_number, terrain_rewards, algorithm):
         """
         Perform Q-Learning for the given number of steps.
         
-        :param initial_x: The starting x-coordinate.
-        :param initial_y: The starting y-coordinate.
-        :param step_number: The number of steps to run the algorithm.
+        - initial_x and initil_y = initial position
+        - step_number = number of iterations to prform
+        - terrain_rewards = dict with the rewards for each terrain
+        - algorithm = algorithm to be used (standard, stochastic, positive)
+        
         """
-        alpha = 0.1  # Learning rate
-        gamma = 0.9  # Discount factor
-        epsilon = 0.1  # Exploration rate
         
         for _ in range(step_number):
             x, y = initial_x, initial_y
-            while True:
+
+            while True: # loop until the agent reaches a terminal state
+
                 # Choose an action
-                action = self.choose_action((x, y), epsilon)
+                action = self.choose_action_e_greedy((x, y))
                 dx, dy, _ = action
+
+                nx, ny = self.get_next_position(x, y, dx, dy, algorithm) # get the next position based on the algorithm
                 
-                # Calculate the new position
-                nx, ny = x + dx, y + dy
+                # check if the new position is out of bounds or a wall
+                out_of_bounds = nx < 0 or nx >= self.col or ny < 0 or ny >= self.row
+                wall = self.map[nx][ny] == '@' if not out_of_bounds else True # if is out of bounds, i will consider it as a wall
                 
-                # Check if the new position is out of bounds or a wall
-                if nx < 0 or nx >= self.col or ny < 0 or ny >= self.row or self.map[nx][ny] == '@':
-                    nx, ny = x, y  # Stay in the same position
+                if out_of_bounds or wall:
+                    nx, ny = x, y  # stay in the same position
                 
                 # Get the reward for the new position
-                reward = terrain_rewards.get(self.map[nx][ny], 0)
+                reward = terrain_rewards[self.map[nx][ny]]
                 
                 # Check if the new state is terminal (fire or goal)
-                if self.map[nx][ny] in ['x', 'O']:
-                    # Terminal state: update Q-value using the Q-learning formula
-                    self.Q[x, y, self.directions.index(action)] += alpha * (
-                        reward + gamma * 0 - self.Q[x, y, self.directions.index(action)]
+                is_in_terminal_state = self.map[nx][ny] in ['x', 'O']
+                if is_in_terminal_state:
+                    # update Q-value with the future reward -> 0 (terminal state)
+                    future_reward_in_terminal_state= 0
+                    self.Q[x, y, self.directions.index(action)] += ALPHA * (
+                        reward + GAMMA * future_reward_in_terminal_state - self.Q[x, y, self.directions.index(action)]
                     )
                     break
-                else:
-                    # Non-terminal state: update Q-value using the Q-learning formula
-                    self.Q[x, y, self.directions.index(action)] += alpha * (
-                        reward + gamma * np.max(self.Q[nx, ny]) - self.Q[x, y, self.directions.index(action)]
-                    )
-                    x, y = nx, ny  # Move to the new position
+
+                # non terminal state: update Q-value using the Q-learning formula
+                self.Q[x, y, self.directions.index(action)] += ALPHA * (
+                    reward + GAMMA * np.max(self.Q[nx, ny]) - self.Q[x, y, self.directions.index(action)]
+                )
+                x, y = nx, ny  # Move to the new position
     
-    def q_learning_positive(self, initial_x, initial_y, step_number):
-        self.q_learning_standard(initial_x, initial_y, step_number, terrain_rewards=TERRAIN_REWARDS_POSITIVE)
+    def q_learning_stochastic(self, initial_x, initial_y, step_number, terrain_rewards, algorithm):
+        """
+        Stochastic version of Q-Learning. It works similarly to the standard version, but with a 20% chance of moving in a perpendicular direction.
+
+        The code just call the standard version with the algorithm parameter set to 'stochastic', so the get_next_position function will be called with the right parameters.
+        """
+        self.q_learning_standard(initial_x, initial_y, step_number, terrain_rewards, algorithm)
+
+    def q_learning_positive(self, initial_x, initial_y, step_number, terrain_rewards, algorithm):
+        """
+        Positive version of Q-Learning. It works similarly to the standard version, but with positive rewards for each terrain.
+
+        The code just call the standard version with the algorithm parameter set to 'positive' and the correct terrain_rewards dict, so the get_next_position function will be called with the right parameters.
+        """
+        self.q_learning_standard(initial_x, initial_y, step_number, terrain_rewards, algorithm)
     
+    # function to return the best policy found by the Q-learning algorithm
     def get_policy(self):
-        """
-        Get the optimal policy based on the learned Q-values.
-        
-        :return: A 2D list representing the policy.
-        """
+
         policy = []
         for i in range(self.col):
             row = []
             for j in range(self.row):
-                if self.map[i][j] in ['x', 'O', '@']:
-                    # Terminal or impassable states: keep the terrain symbol
+                if self.map[i][j] in ['x', 'O', '@']: # the policy stores terminal simbols when facing Fire (X), Objective (O) or Wall (@)
                     row.append(self.map[i][j])
                 else:
-                    # Choose the action with the highest Q-value
-                    best_action = self.directions[np.argmax(self.Q[i, j])]
-                    row.append(best_action[2])
+                    # choose the action with the highest Q-value
+                    # the Q-table stores on the position (i, j) the reward for each action (right, left, down, up), so I am choosing the best movement here 
+                    _, _, best_movement = self.directions[np.argmax(self.Q[i, j])]
+                    row.append(best_movement)
             policy.append(''.join(row))
+
         return policy

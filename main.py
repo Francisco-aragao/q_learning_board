@@ -1,7 +1,7 @@
+from time import time
+
 from q_learning import Game
 from utils import Utils
-from time import time
-import sys
 
 if __name__ == '__main__':
 
@@ -9,21 +9,15 @@ if __name__ == '__main__':
 
     args = utils.arg_parser()
 
-    # index is based on COLS x ROWS so the width is the height and vice versa
+    # index is based on COLS x ROWS  (not ROWS x COLS)
     width, height = utils.extract_map_dimensions(args.map_file)
     game = Game(width=width, height=height)
     game.map = utils.store_map(map_file=args.map_file, width=width, height=height)
 
-    for row in game.map:
-        print(row)
-    
-    print('Initial position:', args.initial_x, args.initial_y)
-    print('Number of steps:', args.step_number)
-
     start = time()
-    game.q_learning(args.algorithm, args.initial_x, args.initial_y, args.step_number)
 
-    policy = game.get_policy()
+    # the board is inverted, so I need to invert the initial position
+    game.q_learning(alg=args.algorithm, initial_x=args.initial_y, initial_y=args.initial_x, step_number=args.step_number)
 
     policy = game.get_policy()
     for row in policy:
@@ -34,4 +28,3 @@ if __name__ == '__main__':
     # printing additional information to measure performance
     if args.measure:
         print('Time:', end - start)
-        """ print('Expanded nodes:', expanded_nodes) """

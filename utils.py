@@ -3,7 +3,7 @@ import os
 
 class Utils:
     """
-    Utility class to handle command line arguments, file reading, map storage and heuristics functions
+    Utility class to handle command line arguments, file reading and map storage
     """
 
     # build the argument parser
